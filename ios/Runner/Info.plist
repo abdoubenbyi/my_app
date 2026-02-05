@@ -45,5 +45,8 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- StartApp SDK App ID -->
+	<key>com.startapp.sdk.APPLICATION_ID</key>
+	<string>201256905</string>
 </dict>
 </plist>
