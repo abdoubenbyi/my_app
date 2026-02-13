@@ -8,6 +8,7 @@ import 'package:startapp_sdk/startapp.dart';
 import '../models/cheat_sheet.dart';
 import '../utils/color_utils.dart';
 import '../utils/ad_service.dart';
+import '../services/favorites_service.dart';
 import 'detail_screen.dart';
 
 class CatalogueScreen extends StatefulWidget {
@@ -25,6 +26,8 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
   String _searchQuery = '';
   final Set<String> _selectedTags = {};
   Set<String> _allTags = {};
+  bool _showFavoritesOnly = false;
+  List<String> _favoriteIds = [];
   StartAppBannerAd? _bannerAd;
 
   final ScrollController _scrollController = ScrollController();
@@ -34,6 +37,7 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
   @override
   void initState() {
     super.initState();
+    _loadFavorites();
     _loadData();
     _loadBanner();
     _scrollController.addListener(_onScroll);
@@ -68,6 +72,17 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
     _bannerAd?.dispose();
     _scrollController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadFavorites() async {
+    final favs = await favoritesService.getFavorites();
+    if (mounted) {
+      setState(() {
+        _favoriteIds = favs;
+      });
+      // Re-filter if we are currently showing content
+      if (!_isLoading) _filter();
+    }
   }
 
   Future<void> _loadData() async {
@@ -227,7 +242,10 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
             _selectedTags.isEmpty ||
             _selectedTags.every((t) => sheet.tags.contains(t));
 
-        return matchesSearch && matchesTags;
+        final matchesFavorites =
+            !_showFavoritesOnly || _favoriteIds.contains(sheet.id);
+
+        return matchesSearch && matchesTags && matchesFavorites;
       }).toList();
       _itemLimit = _pageSize; // Reset pagination on filter
     });
@@ -367,42 +385,83 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
             Center(child: StartAppBanner(_bannerAd!)),
           ],
           const SizedBox(height: 24),
-          Container(
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.05)
-                  : Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: isDark
-                  ? []
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 20,
-                        offset: const Offset(0, 10),
+          Row(
+            children: [
+              Expanded(
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.05)
+                        : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    boxShadow: isDark
+                        ? []
+                        : [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                    border: Border.all(
+                      color: isDark
+                          ? Colors.white.withValues(alpha: 0.1)
+                          : Colors.black12,
+                    ),
+                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: TextField(
+                    onChanged: (val) {
+                      _searchQuery = val;
+                      _filter();
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Search tech...',
+                      icon: const Icon(Icons.search_rounded),
+                      border: InputBorder.none,
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.white38 : Colors.black38,
                       ),
-                    ],
-              border: Border.all(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.black12,
-              ),
-            ),
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: TextField(
-              onChanged: (val) {
-                _searchQuery = val;
-                _filter();
-              },
-              decoration: InputDecoration(
-                hintText: 'Search tech...',
-                icon: const Icon(Icons.search_rounded),
-                border: InputBorder.none,
-                hintStyle: TextStyle(
-                  color: isDark ? Colors.white38 : Colors.black38,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 12),
+              IconButton.filled(
+                onPressed: () {
+                  setState(() {
+                    _showFavoritesOnly = !_showFavoritesOnly;
+                    _filter();
+                  });
+                },
+                style: IconButton.styleFrom(
+                  backgroundColor: _showFavoritesOnly
+                      ? const Color(0xFFFF4081)
+                      : (isDark
+                            ? Colors.white.withValues(alpha: 0.05)
+                            : Colors.white),
+                  foregroundColor: _showFavoritesOnly
+                      ? Colors.white
+                      : (isDark ? Colors.white70 : Colors.black54),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(
+                      20,
+                    ), // Matching search bar radius
+                    side: BorderSide(
+                      color: _showFavoritesOnly
+                          ? Colors.transparent
+                          : (isDark
+                                ? Colors.white.withValues(alpha: 0.1)
+                                : Colors.black12),
+                    ),
+                  ),
+                  fixedSize: const Size(56, 56), // Matching height approx
+                ),
+                icon: Icon(
+                  _showFavoritesOnly ? Icons.favorite : Icons.favorite_border,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           _buildTagsBar(isDark),
@@ -496,7 +555,7 @@ class _CatalogueScreenState extends State<CatalogueScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => DetailScreen(sheet: sheet)),
-              );
+              ).then((_) => _loadFavorites());
             },
             child: Container(
               decoration: BoxDecoration(
